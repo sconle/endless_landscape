@@ -29,8 +29,11 @@ headlessMode = False # True pour le lancer dans la console (sans bureau) ou Fals
 changePlayDirectionProbas = [0.02, 0.032, 0.1, 0.01] # liste de probabilités
 fixedPlayDirectionChangeProba = .01 # probabilité de changement de direction supplémentaire
 changeProbasEvery = [4.0, 7.0] # temps en secondes (min et max, peu importe l'ordre) au bout duquel une nouvelle proba est tirée au sort
+changeConfigEvery = [3.0, 10.0] # temps en seconde (min et max, peu importe l'ordre) au bout duquel une nouvelle config est choisie
 maxFPS = 20 # nombre maximal d'images par secondes souhaitées
-listZoom = [] # zoom moyen qu'atteint chaque config (1 correspond à aucun zoom) soso
+listZoom = [1, 1.5, 2, 2.5] # zoom moyen qu'atteint chaque config (1 correspond à aucun zoom)
+timeTransiConfig = 3.0 # temps moyen qu'on met pour atteindre une configuration en secondes
+
 
 if headlessMode :
     import pygame, numpy
@@ -40,7 +43,7 @@ if headlessMode :
     print("running in headless mode using framebuffer",os.environ["SDL_FBDEV"])
     pygame.init()
     pygame.mouse.set_visible(False)
-else : import time
+else : import time, imutils
 
 class ImageSequence():
 
@@ -51,7 +54,7 @@ class ImageSequence():
         self.currentFrameIndex = 0 # play head position
         self.playingForward = True
         self.changePlayDirectionProba = random.choice(changePlayDirectionProbas)
-        self.zoom = 1
+        self.zoom = 2
         self.config = 0
 
     def extractFrames(self, videoPath):
@@ -83,9 +86,18 @@ class ImageSequence():
     def getCurrentFrame(self):
         return self.frames[self.currentFrameIndex]
 
+    def getZoom(self):
+        return self.zoom
+
+    def setZoom(self, newZoom):
+        self.zoom = newZoom
+
+    def getConfig(self):
+        return self.config
+
     def changeConfig(self):
         old = self.config
-        self.config = random.choice([0,len(listZoom) - 1].pop(old))
+        self.config = random.choice([i for i in range(len(listZoom))])
 
     def step(self, loop=False):
         """ set the play head (self.currentFrameIndex) to it's new position depending of the change direction
@@ -116,13 +128,21 @@ def getProbaTimer():
     delay = random.uniform(min(changeProbasEvery), max(changeProbasEvery))
     return datetime.now() + timedelta(seconds=delay)
 
+def getConfigTimer():
+    """ returns a datetime object of when the next config change is due """
+    delay = random.uniform(min(changeConfigEvery), max(changeConfigEvery))
+    return datetime.now() + timedelta(seconds=delay)
+
 if __name__ == "__main__":
     if len(sys.argv) < 2 : raise SystemExit(f"usage : python3 {sys.argv[0]} monFichier.mp4")
     img = ImageSequence(sys.argv[1])
 
     timeStarted, framesShown, = datetime.now(), 0
     changeProbaTimer = getProbaTimer()
+    changeConfigTimer = getConfigTimer()
     periodMillis = int(1000/maxFPS)
+    deltaZoom = 0
+    reachConfig = False
 
     # window or surface creation
     if headlessMode : surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN) # full screen
@@ -132,12 +152,39 @@ if __name__ == "__main__":
     playing = True
 
 
+    def Zoom(cv2Object, zoomSize):
+        # Resizes the image/video frame to the specified amount of "zoomSize".
+        # A zoomSize of "2", for example, will double the canvas size
+        cv2Object = imutils.resize(cv2Object, width=(int(zoomSize * cv2Object.shape[1])))
+        # center is simply half of the height & width (y/2,x/2)
+        center = (int(cv2Object.shape[0] / 2), int(cv2Object.shape[1] / 2))
+        # cropScale represents the top left corner of the cropped frame (y/x)
+        cropScale = (int(center[0] / zoomSize), int(center[1] / zoomSize))
+        # The image/video frame is cropped to the center with a size of the original picture
+        # image[y1:y2,x1:x2] is used to iterate and grab a portion of an image
+        # (y1,x1) is the top left corner and (y2,x1) is the bottom right corner of new cropped frame.
+        cv2Object = cv2Object[(int(center[0]) - int(cropScale[0])):(int(center[0]) + int(cropScale[0])),(int(center[1]) - int(cropScale[1])):int((center[1]) + int(cropScale[1]))]
+        return cv2Object
+
     # play loop
     while playing :
         loopTime = datetime.now()
 
-        # config
-        config = 0
+        # changing configuration
+        if loopTime > changeConfigTimer:
+            reachConfig = False
+            img.changeConfig()
+            newZoom = listZoom[img.getConfig()]
+            oldZoom = img.getZoom()
+            if oldZoom > newZoom:
+                timeTransiZoom = timeTransiConfig + 1.0
+                deltaZoom = (newZoom - oldZoom)/(maxFPS*timeTransiZoom)
+            else:
+                timeTransiZoom = timeTransiConfig - 1.0
+                deltaZoom = (newZoom - oldZoom)/(maxFPS*timeTransiZoom)
+            changeConfigTimer = getConfigTimer() + timedelta(seconds=max(timeTransiZoom,timeTransiConfig))
+
+
 
         # display current frame
         if headlessMode :
@@ -147,7 +194,11 @@ if __name__ == "__main__":
                 if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                     playing = False
         else :
-            cv2.imshow('window', img.getCurrentFrame())
+            if not reachConfig:
+                img.setZoom(float(img.getZoom()+deltaZoom))
+                if (img.getZoom() < listZoom[img.getConfig()] + 0.2) and (img.getZoom() > listZoom[img.getConfig()] - 0.2) :
+                    reachConfig = True
+            cv2.imshow('window', Zoom(img.getCurrentFrame(),img.getZoom()))
         framesShown += 1 # used to calc the framerate
 
         # wait
@@ -156,6 +207,8 @@ if __name__ == "__main__":
             if timeElapsed < periodMillis : pygame.time.wait(int(periodMillis - timeElapsed))
         else :
             if cv2.waitKey(int(1000/maxFPS)) == 27: playing = False # exit on esc
+            print(reachConfig)
+            print(img.getZoom())
 
         # set the playhead for the next frame
         if loopTime > changeProbaTimer :
