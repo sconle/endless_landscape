@@ -20,7 +20,7 @@
 #
 # usage: python3 playRandom_RAM.py monfichier.mp4
 
-import os, sys, cv2, random
+import os, sys, cv2, random, numpy
 from datetime import datetime, timedelta
 
 headlessMode = False # True pour le lancer dans la console (sans bureau) ou False pour le lancer sous le bureau
@@ -32,11 +32,12 @@ changeProbasEvery = [4.0, 7.0] # temps en secondes (min et max, peu importe l'or
 changeConfigEvery = [3.0, 10.0] # temps en seconde (min et max, peu importe l'ordre) au bout duquel une nouvelle config est choisie
 maxFPS = 20 # nombre maximal d'images par secondes souhaitées
 listZoom = [1, 1.5, 2, 2.5] # zoom moyen qu'atteint chaque config (1 correspond à aucun zoom)
+listPoints = [(0,0),(960,540),(0,540),(960,0)] # liste de coordonnées (colonne, ligne) des différents points d'interets
 timeTransiConfig = 3.0 # temps moyen qu'on met pour atteindre une configuration en secondes
 
 
 if headlessMode :
-    import pygame, numpy
+    import pygame
     os.putenv('SDL_VIDEODRIVER', 'fbcon')
     os.environ["SDL_FBDEV"] = "/dev/fb0"
     os.environ['SDL_NOMOUSE'] = '1'
@@ -54,7 +55,8 @@ class ImageSequence():
         self.currentFrameIndex = 0 # play head position
         self.playingForward = True
         self.changePlayDirectionProba = random.choice(changePlayDirectionProbas)
-        self.zoom = 2
+        self.zoom = 1
+        self.points = (960,540)
         self.config = 0
 
     def extractFrames(self, videoPath):
@@ -91,6 +93,12 @@ class ImageSequence():
 
     def setZoom(self, newZoom):
         self.zoom = newZoom
+
+    def getPoints(self):
+        return self.points
+
+    def setPoints(self, newPoints):
+        self.points = newPoints
 
     def getConfig(self):
         return self.config
@@ -136,13 +144,18 @@ def getConfigTimer():
 if __name__ == "__main__":
     if len(sys.argv) < 2 : raise SystemExit(f"usage : python3 {sys.argv[0]} monFichier.mp4")
     img = ImageSequence(sys.argv[1])
+    if len(listZoom) != len(listPoints):
+        raise SystemExit("La liste des zooms doit avoir la même longueur que celle des points")
 
     timeStarted, framesShown, = datetime.now(), 0
     changeProbaTimer = getProbaTimer()
     changeConfigTimer = getConfigTimer()
     periodMillis = int(1000/maxFPS)
     deltaZoom = 0
-    reachConfig = False
+    deltaCols = 0
+    deltaRows = 0
+    reachZoom = False
+    reachPoints = False
 
     # window or surface creation
     if headlessMode : surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN) # full screen
@@ -166,14 +179,27 @@ if __name__ == "__main__":
         cv2Object = cv2Object[(int(center[0]) - int(cropScale[0])):(int(center[0]) + int(cropScale[0])),(int(center[1]) - int(cropScale[1])):int((center[1]) + int(cropScale[1]))]
         return cv2Object
 
+    def Translation(cv2Object, Points):
+        rows, cols, color = cv2Object.shape
+        print(rows)
+        M = numpy.float32([[1, 0, cols/2 - Points[0]], [0, 1, rows/2 - Points[1]]])
+        dst = cv2.warpAffine(cv2Object, M, (cols, rows))
+        return dst
+
+    def Distance(P1, P2):
+        return numpy.sqrt(numpy.square(P1[0] - P2[0]) + numpy.square(P1[1] - P2[1]))
+
     # play loop
     while playing :
         loopTime = datetime.now()
 
         # changing configuration
         if loopTime > changeConfigTimer:
-            reachConfig = False
+            reachZoom = False
+            reachPoints = False
             img.changeConfig()
+
+            # changing Zoom
             newZoom = listZoom[img.getConfig()]
             oldZoom = img.getZoom()
             if oldZoom > newZoom:
@@ -182,6 +208,13 @@ if __name__ == "__main__":
             else:
                 timeTransiZoom = timeTransiConfig - 1.0
                 deltaZoom = (newZoom - oldZoom)/(maxFPS*timeTransiZoom)
+
+            # changing focus point
+            newPoints = listPoints[img.getConfig()]
+            oldPoints = img.getPoints()
+            deltaCols = (newPoints[0] - oldPoints[0])/(maxFPS*timeTransiConfig)
+            deltaRows = (newPoints[1] - oldPoints[1])/(maxFPS*timeTransiConfig)
+
             changeConfigTimer = getConfigTimer() + timedelta(seconds=max(timeTransiZoom,timeTransiConfig))
 
 
@@ -194,11 +227,15 @@ if __name__ == "__main__":
                 if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                     playing = False
         else :
-            if not reachConfig:
+            if not reachZoom:
                 img.setZoom(float(img.getZoom()+deltaZoom))
-                if (img.getZoom() < listZoom[img.getConfig()] + 0.2) and (img.getZoom() > listZoom[img.getConfig()] - 0.2) :
-                    reachConfig = True
-            cv2.imshow('window', Zoom(img.getCurrentFrame(),img.getZoom()))
+                if (img.getZoom() < listZoom[img.getConfig()] + 0.2) and (img.getZoom() > listZoom[img.getConfig()] - 0.2):
+                    reachZoom = True
+            if not reachPoints:
+                img.setPoints((img.getPoints()[0] + deltaCols, img.getPoints()[1] + deltaRows))
+                if Distance(img.getPoints(), listPoints[img.getConfig()]) < 50:
+                    reachPoints = True
+            cv2.imshow('window', Zoom(Translation(img.getCurrentFrame(),img.getPoints()),img.getZoom()))
         framesShown += 1 # used to calc the framerate
 
         # wait
@@ -207,8 +244,6 @@ if __name__ == "__main__":
             if timeElapsed < periodMillis : pygame.time.wait(int(periodMillis - timeElapsed))
         else :
             if cv2.waitKey(int(1000/maxFPS)) == 27: playing = False # exit on esc
-            print(reachConfig)
-            print(img.getZoom())
 
         # set the playhead for the next frame
         if loopTime > changeProbaTimer :
