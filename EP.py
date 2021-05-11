@@ -181,7 +181,6 @@ if __name__ == "__main__":
 
     def Translation(cv2Object, Points):
         rows, cols, color = cv2Object.shape
-        print(rows)
         M = numpy.float32([[1, 0, cols/2 - Points[0]], [0, 1, rows/2 - Points[1]]])
         dst = cv2.warpAffine(cv2Object, M, (cols, rows))
         return dst
