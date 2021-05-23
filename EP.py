@@ -26,14 +26,17 @@ from datetime import datetime, timedelta
 headlessMode = False # True pour le lancer dans la console (sans bureau) ou False pour le lancer sous le bureau
 # 1 proba fixe + 1 liste
 # temps min et temps max
+screenSize = [1920,1080] # taille de l'écran d'affichage (colonne, ligne)
 changePlayDirectionProbas = [0.02, 0.032, 0.1, 0.01] # liste de probabilités
 fixedPlayDirectionChangeProba = .01 # probabilité de changement de direction supplémentaire
 changeProbasEvery = [4.0, 7.0] # temps en secondes (min et max, peu importe l'ordre) au bout duquel une nouvelle proba est tirée au sort
 changeConfigEvery = [3.0, 10.0] # temps en seconde (min et max, peu importe l'ordre) au bout duquel une nouvelle config est choisie
 maxFPS = 20 # nombre maximal d'images par secondes souhaitées
-listZoom = [1, 1.5, 2, 2.5] # zoom moyen qu'atteint chaque config (1 correspond à aucun zoom)
-listPoints = [(0,0),(960,540),(0,540),(960,0)] # liste de coordonnées (colonne, ligne) des différents points d'interets
-timeTransiConfig = 3.0 # temps moyen qu'on met pour atteindre une configuration en secondes
+listZoom = [1, 1.5 ,1.2, 1.7] # zoom moyen qu'atteint chaque config (1 correspond à aucun zoom)
+listPoints = [(960,540),(580,580),(790,200),(1500,1000),] # liste de coordonnées (colonne, ligne) des différents points d'interets
+avgSpeed = 100 # vitesse moyenne de déplacement pendant les transitions en pixels par seconde
+probaRandConfig = 1 # 0 que des configs provenant de la liste / 1 que de l'alea
+randZoomInter = [1.7, 2.5] # intervalle dans lequel on ppeut piocher un zoom aléatoire
 
 
 if headlessMode :
@@ -55,8 +58,8 @@ class ImageSequence():
         self.currentFrameIndex = 0 # play head position
         self.playingForward = True
         self.changePlayDirectionProba = random.choice(changePlayDirectionProbas)
-        self.zoom = 1
-        self.points = (960,540)
+        self.zoom = listZoom[0]
+        self.points = listPoints[0]
         self.config = 0
 
     def extractFrames(self, videoPath):
@@ -152,10 +155,10 @@ if __name__ == "__main__":
     changeConfigTimer = getConfigTimer()
     periodMillis = int(1000/maxFPS)
     deltaZoom = 0
-    deltaCols = 0
-    deltaRows = 0
-    reachZoom = False
-    reachPoints = False
+    newZoom, oldZoom = listZoom[img.getConfig()], img.getZoom()
+    newPoints, oldPoints = listPoints[img.getConfig()], img.getPoints()
+    distance = 0
+    reachZoom, reachPoints = False, False
 
     # window or surface creation
     if headlessMode : surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN) # full screen
@@ -164,29 +167,31 @@ if __name__ == "__main__":
         cv2.setWindowProperty("window",cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
     playing = True
 
-
-    def Zoom(cv2Object, zoomSize):
-        # Resizes the image/video frame to the specified amount of "zoomSize".
-        # A zoomSize of "2", for example, will double the canvas size
-        cv2Object = imutils.resize(cv2Object, width=(int(zoomSize * cv2Object.shape[1])))
-        # center is simply half of the height & width (y/2,x/2)
-        center = (int(cv2Object.shape[0] / 2), int(cv2Object.shape[1] / 2))
-        # cropScale represents the top left corner of the cropped frame (y/x)
-        cropScale = (int(center[0] / zoomSize), int(center[1] / zoomSize))
-        # The image/video frame is cropped to the center with a size of the original picture
-        # image[y1:y2,x1:x2] is used to iterate and grab a portion of an image
-        # (y1,x1) is the top left corner and (y2,x1) is the bottom right corner of new cropped frame.
-        cv2Object = cv2Object[(int(center[0]) - int(cropScale[0])):(int(center[0]) + int(cropScale[0])),(int(center[1]) - int(cropScale[1])):int((center[1]) + int(cropScale[1]))]
-        return cv2Object
-
-    def Translation(cv2Object, Points):
-        rows, cols, color = cv2Object.shape
-        M = numpy.float32([[1, 0, cols/2 - Points[0]], [0, 1, rows/2 - Points[1]]])
-        dst = cv2.warpAffine(cv2Object, M, (cols, rows))
-        return dst
-
     def Distance(P1, P2):
         return numpy.sqrt(numpy.square(P1[0] - P2[0]) + numpy.square(P1[1] - P2[1]))
+
+    if not headlessMode:
+
+        def Zoom(cv2Object, zoomSize):
+            # Resizes the image/video frame to the specified amount of "zoomSize".
+            # A zoomSize of "2", for example, will double the canvas size
+            #print(cv2Object.shape[1])
+            cv2Object = imutils.resize(cv2Object, width=(int(zoomSize) * int(cv2Object.shape[1])))
+            # center is simply half of the height & width (y/2,x/2)
+            center = (int(cv2Object.shape[0] / 2), int(cv2Object.shape[1] / 2))
+            # cropScale represents the top left corner of the cropped frame (y/x)
+            cropScale = (int(center[0] / zoomSize), int(center[1] / zoomSize))
+            # The image/video frame is cropped to the center with a size of the original picture
+            # image[y1:y2,x1:x2] is used to iterate and grab a portion of an image
+            # (y1,x1) is the top left corner and (y2,x1) is the bottom right corner of new cropped frame.
+            cv2Object = cv2Object[(int(center[0]) - int(cropScale[0])):(int(center[0]) + int(cropScale[0])),(int(center[1]) - int(cropScale[1])):int((center[1]) + int(cropScale[1]))]
+            return cv2Object
+
+        def Translation(cv2Object, Points):
+            rows, cols, color = cv2Object.shape
+            M = numpy.float32([[1, 0, cols/2 - Points[0]], [0, 1, rows/2 - Points[1]]])
+            dst = cv2.warpAffine(cv2Object, M, (cols, rows))
+            return dst
 
     # play loop
     while playing :
@@ -196,27 +201,32 @@ if __name__ == "__main__":
         if loopTime > changeConfigTimer:
             reachZoom = False
             reachPoints = False
-            img.changeConfig()
+            oldPoints = img.getPoints()
+            oldZoom = img.getZoom()
+            if random.random() < probaRandConfig:
+                newZoom = numpy.random.uniform(randZoomInter[0],randZoomInter[1])
+                newPoints = (numpy.random.randint(screenSize[0]/(2*newZoom) - 1,img.getCurrentFrame().shape[1] - screenSize[0]/(2*newZoom) + 1),numpy.random.randint(screenSize[1]/(2*newZoom) - 1,img.getCurrentFrame().shape[0] - screenSize[1]/(2*newZoom) + 1))
+            else:
+                img.changeConfig()
+                newPoints, newZoom = listPoints[img.getConfig()], listZoom[img.getConfig()]
+            distance = Distance(newPoints, oldPoints)
+            timeTransiConfig = distance / avgSpeed
 
             # changing Zoom
-            newZoom = listZoom[img.getConfig()]
-            oldZoom = img.getZoom()
             if oldZoom > newZoom:
-                timeTransiZoom = timeTransiConfig + 1.0
-                deltaZoom = (newZoom - oldZoom)/(maxFPS*timeTransiZoom)
+                timeTransiZoom = timeTransiConfig * 1.5
+                if timeTransiZoom != 0:
+                    deltaZoom = (newZoom - oldZoom)/(maxFPS*timeTransiZoom)
+                else:
+                    deltaZoom = 0
             else:
-                timeTransiZoom = timeTransiConfig - 1.0
-                deltaZoom = (newZoom - oldZoom)/(maxFPS*timeTransiZoom)
+                timeTransiZoom = timeTransiConfig * 2/3
+                if timeTransiZoom != 0:
+                    deltaZoom = (newZoom - oldZoom)/(maxFPS*timeTransiZoom)
+                else:
+                    timeTransiZoom = 0
 
-            # changing focus point
-            newPoints = listPoints[img.getConfig()]
-            oldPoints = img.getPoints()
-            deltaCols = (newPoints[0] - oldPoints[0])/(maxFPS*timeTransiConfig)
-            deltaRows = (newPoints[1] - oldPoints[1])/(maxFPS*timeTransiConfig)
-
-            changeConfigTimer = getConfigTimer() + timedelta(seconds=max(timeTransiZoom,timeTransiConfig))
-
-
+            changeConfigTimer = getConfigTimer() + timedelta(seconds=max(timeTransiZoom, timeTransiConfig) + numpy.random.uniform(min(changeConfigEvery), max(changeConfigEvery)))
 
         # display current frame
         if headlessMode :
@@ -227,12 +237,22 @@ if __name__ == "__main__":
                     playing = False
         else :
             if not reachZoom:
-                img.setZoom(float(img.getZoom()+deltaZoom))
-                if (img.getZoom() < listZoom[img.getConfig()] + 0.2) and (img.getZoom() > listZoom[img.getConfig()] - 0.2):
+                img.setZoom(img.getZoom()+deltaZoom)
+                if (img.getZoom() < newZoom + 0.2) and (img.getZoom() > newZoom - 0.2):
                     reachZoom = True
+
             if not reachPoints:
+
+                # update of the deltaCols, deltaRows each frame
+                if Distance(img.getPoints(), newPoints) != 0:
+                    deltaCols = numpy.sign(newPoints[0] - oldPoints[0]) * (img.getZoom() * avgSpeed / maxFPS) * numpy.square((newPoints[0] - img.getPoints()[0]) / Distance(img.getPoints(), newPoints))
+                    deltaRows = numpy.sign(newPoints[1] - oldPoints[1]) * (img.getZoom() * avgSpeed / maxFPS) * numpy.square((newPoints[1] - img.getPoints()[1]) / Distance(img.getPoints(), newPoints))
+                else:
+                    deltaCols = 0
+                    deltaRows = 0
+
                 img.setPoints((img.getPoints()[0] + deltaCols, img.getPoints()[1] + deltaRows))
-                if Distance(img.getPoints(), listPoints[img.getConfig()]) < 50:
+                if Distance(img.getPoints(), newPoints) < 50:
                     reachPoints = True
             cv2.imshow('window', Zoom(Translation(img.getCurrentFrame(),img.getPoints()),img.getZoom()))
         framesShown += 1 # used to calc the framerate
