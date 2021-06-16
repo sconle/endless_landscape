@@ -30,13 +30,13 @@ screenSize = [1920,1080] # taille de l'écran d'affichage (colonne, ligne)
 changePlayDirectionProbas = [0.02, 0.032, 0.1, 0.01] # liste de probabilités
 fixedPlayDirectionChangeProba = .01 # probabilité de changement de direction supplémentaire
 changeProbasEvery = [4.0, 7.0] # temps en secondes (min et max, peu importe l'ordre) au bout duquel une nouvelle proba est tirée au sort
-changeConfigEvery = [3.0, 10.0] # temps en seconde (min et max, peu importe l'ordre) au bout duquel une nouvelle config est choisie
+changeConfigEvery = [5.0, 5.1] # temps en seconde (min et max, peu importe l'ordre) au bout duquel une nouvelle config est choisie
 maxFPS = 20 # nombre maximal d'images par secondes souhaitées
-listZoom = [1, 1.5 ,1.2, 1.7] # zoom moyen qu'atteint chaque config (1 correspond à aucun zoom)
-listPoints = [(960,540),(580,580),(790,200),(1500,1000),] # liste de coordonnées (colonne, ligne) des différents points d'interets
-avgSpeed = 100 # vitesse moyenne de déplacement pendant les transitions en pixels par seconde
-probaRandConfig = 1 # 0 que des configs provenant de la liste / 1 que de l'alea
-randZoomInter = [1.7, 2.5] # intervalle dans lequel on ppeut piocher un zoom aléatoire
+listZoom = [1, 2 ,2, 2, 2] # zoom moyen qu'atteint chaque config (1 correspond à aucun zoom)
+listPoints = [(960,540),(0,0),(0,1080),(1920,0),(1920,1080)] # liste de coordonnées (colonne, ligne) des différents points d'interets
+avgSpeed = 150 # vitesse moyenne de déplacement pendant les transitions en pixels par seconde
+probaRandConfig = 0 # 0 que des configs provenant de la liste / 1 que de l'alea
+randZoomInter = [1, 1.5] # intervalle dans lequel on ppeut piocher un zoom aléatoire
 
 
 if headlessMode :
@@ -170,7 +170,18 @@ if __name__ == "__main__":
     def Distance(P1, P2):
         return numpy.sqrt(numpy.square(P1[0] - P2[0]) + numpy.square(P1[1] - P2[1]))
 
-    if not headlessMode:
+    if headlessMode:
+
+        def ZoomTranslatHeadlessMode(image, zoomSize, point):
+            # Méthode Zoom et translation dans Pygame pour la Raspberry
+            wnd_w, wnd_h = screenSize[0], screenSize[1]
+            image_surface = pygame.Surface((round(wnd_w / zoomSize), round(wnd_h / zoomSize)))
+            image_surface.blit(image, (int(point[0] - (wnd_w)/2),int(point[1] - (wnd_h)/2)))
+            image_surface = pygame.transform.scale(image_surface, (wnd_w, wnd_h))
+            return image_surface
+
+
+    else:
 
         def Zoom(cv2Object, zoomSize):
             # Resizes the image/video frame to the specified amount of "zoomSize".
@@ -198,14 +209,17 @@ if __name__ == "__main__":
         loopTime = datetime.now()
 
         # changing configuration
-        if loopTime > changeConfigTimer:
+        if loopTime > changeConfigTimer and reachZoom and reachPoints:
             reachZoom = False
             reachPoints = False
             oldPoints = img.getPoints()
             oldZoom = img.getZoom()
             if random.random() < probaRandConfig:
                 newZoom = numpy.random.uniform(randZoomInter[0],randZoomInter[1])
-                newPoints = (numpy.random.randint(screenSize[0]/(2*newZoom) - 1,img.getCurrentFrame().shape[1] - screenSize[0]/(2*newZoom) + 1),numpy.random.randint(screenSize[1]/(2*newZoom) - 1,img.getCurrentFrame().shape[0] - screenSize[1]/(2*newZoom) + 1))
+                if headlessMode:
+                    newPoints = (numpy.random.randint(screenSize[0] / (2 * newZoom) - 1,img.getCurrentFrame().get_width() - screenSize[0] / (2 * newZoom) + 1), numpy.random.randint(screenSize[1] / (2 * newZoom) - 1,img.getCurrentFrame().get_height() - screenSize[1] / (2 * newZoom) + 1))
+                else:
+                    newPoints = (numpy.random.randint(screenSize[0]/(2*newZoom) - 1,img.getCurrentFrame().shape[1] - screenSize[0]/(2*newZoom) + 1),numpy.random.randint(screenSize[1]/(2*newZoom) - 1,img.getCurrentFrame().shape[0] - screenSize[1]/(2*newZoom) + 1))
             else:
                 img.changeConfig()
                 newPoints, newZoom = listPoints[img.getConfig()], listZoom[img.getConfig()]
@@ -226,11 +240,32 @@ if __name__ == "__main__":
                 else:
                     timeTransiZoom = 0
 
-            changeConfigTimer = getConfigTimer() + timedelta(seconds=max(timeTransiZoom, timeTransiConfig) + numpy.random.uniform(min(changeConfigEvery), max(changeConfigEvery)))
+            changeConfigTimer = getConfigTimer() + timedelta(seconds=max(timeTransiZoom, timeTransiConfig))
 
         # display current frame
         if headlessMode :
-            surface.blit(img.getCurrentFrame(), (0,0))
+            if not reachZoom:
+                img.setZoom(img.getZoom() + deltaZoom)
+                if (img.getZoom() < newZoom + 0.2) and (img.getZoom() > newZoom - 0.2):
+                    reachZoom = True
+
+            if not reachPoints:
+
+                # update of the deltaCols, deltaRows each frame
+                if Distance(img.getPoints(), newPoints) != 0:
+                    deltaCols = numpy.sign(newPoints[0] - oldPoints[0]) * (avgSpeed / (maxFPS * img.getZoom())) * numpy.square((newPoints[0] - img.getPoints()[0]) / Distance(img.getPoints(), newPoints))
+                    deltaRows = numpy.sign(newPoints[1] - oldPoints[1]) * (avgSpeed / (maxFPS * img.getZoom())) * numpy.square((newPoints[1] - img.getPoints()[1]) / Distance(img.getPoints(), newPoints))
+                else:
+                    deltaCols = 0
+                    deltaRows = 0
+
+                img.setPoints((img.getPoints()[0] + deltaCols, img.getPoints()[1] + deltaRows))
+
+                if Distance(img.getPoints(), newPoints) < 5:
+                    reachPoints = True
+
+
+            surface.blit(ZoomTranslatHeadlessMode(img.getCurrentFrame(),img.getZoom(),img.getPoints()), (0,0))
             pygame.display.update()
             for event in pygame.event.get(): # exit on esc
                 if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
@@ -245,14 +280,14 @@ if __name__ == "__main__":
 
                 # update of the deltaCols, deltaRows each frame
                 if Distance(img.getPoints(), newPoints) != 0:
-                    deltaCols = numpy.sign(newPoints[0] - oldPoints[0]) * (img.getZoom() * avgSpeed / maxFPS) * numpy.square((newPoints[0] - img.getPoints()[0]) / Distance(img.getPoints(), newPoints))
-                    deltaRows = numpy.sign(newPoints[1] - oldPoints[1]) * (img.getZoom() * avgSpeed / maxFPS) * numpy.square((newPoints[1] - img.getPoints()[1]) / Distance(img.getPoints(), newPoints))
+                    deltaCols = numpy.sign(newPoints[0] - oldPoints[0]) * (avgSpeed / (maxFPS * img.getZoom())) * numpy.square((newPoints[0] - img.getPoints()[0]) / Distance(img.getPoints(), newPoints))
+                    deltaRows = numpy.sign(newPoints[1] - oldPoints[1]) * (avgSpeed / (maxFPS * img.getZoom())) * numpy.square((newPoints[1] - img.getPoints()[1]) / Distance(img.getPoints(), newPoints))
                 else:
                     deltaCols = 0
                     deltaRows = 0
 
                 img.setPoints((img.getPoints()[0] + deltaCols, img.getPoints()[1] + deltaRows))
-                if Distance(img.getPoints(), newPoints) < 50:
+                if Distance(img.getPoints(), newPoints) < 5:
                     reachPoints = True
             cv2.imshow('window', Zoom(Translation(img.getCurrentFrame(),img.getPoints()),img.getZoom()))
         framesShown += 1 # used to calc the framerate
