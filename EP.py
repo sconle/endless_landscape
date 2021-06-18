@@ -37,7 +37,8 @@ listPoints = [(960, 540), (1670, 250), (1733, 893), (230, 230),(1763, 157)]  # l
 avgSpeed = 150  # vitesse moyenne de déplacement pendant les transitions en pixels par seconde
 probaRandConfig = 1  # 0 que des configs provenant de la liste / 1 que de l'alea
 randZoomInter = [1.2, 1.7]  # intervalle dans lequel on ppeut piocher un zoom aléatoire
-forkZoom = 0.01  # fourchette à partir de laquelle le zom est considéré comme atteint, par exemple pour une fourchette de 0.1, si l'on souhaite atteindre un zoom de 1.3 alors on considerera comme acceptable un zoom de 1.2 ou 1.4
+forkZoom = 0.01  # fourchette à partir de laquelle le zoom est considéré comme atteint, par exemple pour une fourchette de 0.1, si l'on souhaite atteindre un zoom de 1.3 alors on considerera comme acceptable un zoom de 1.2 ou 1.4
+forkDistance = 5 # fourchette à partir de laquelle la distance est considérée comme atteinte, par exemple pour une fourchette de 5, si l'on souhaite atteindre une distance de 250 alors on considerera comme acceptable une distance de 245 ou 255
 
 if headlessMode:
     import pygame
@@ -173,7 +174,7 @@ if __name__ == "__main__":
 
     # window or surface creation
     if headlessMode:
-        surface = pygame.display.set_mode((screenSize[0], screenSize[1]))  # ,pygame.FULLSCREEN) # full screen
+        surface = pygame.display.set_mode((screenSize[0], screenSize[1]), pygame.FULLSCREEN) # full screen
     else:
         cv2.namedWindow("window", cv2.WND_PROP_FULLSCREEN)  # full screen, no titlebar
         cv2.setWindowProperty("window", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -209,8 +210,7 @@ if __name__ == "__main__":
             # The image/video frame is cropped to the center with a size of the original picture
             # image[y1:y2,x1:x2] is used to iterate and grab a portion of an image
             # (y1,x1) is the top left corner and (y2,x1) is the bottom right corner of new cropped frame.
-            cv2Object = cv2Object[(int(center[0]) - int(cropScale[0])):(int(center[0]) + int(cropScale[0])),
-                        (int(center[1]) - int(cropScale[1])):int((center[1]) + int(cropScale[1]))]
+            cv2Object = cv2Object[(int(center[0]) - int(cropScale[0])):(int(center[0]) + int(cropScale[0])),(int(center[1]) - int(cropScale[1])):int((center[1]) + int(cropScale[1]))]
             return cv2Object
 
 
@@ -276,7 +276,7 @@ if __name__ == "__main__":
 
                 img.setPoints((img.getPoints()[0] + deltaCols, img.getPoints()[1] + deltaRows))
 
-                if Distance(img.getPoints(), newPoints) < 5:
+                if Distance(img.getPoints(), newPoints) < forkDistance:
                     reachPoints = True
 
             surface.blit(ZoomTranslatHeadlessMode(img.getCurrentFrame(), img.getZoom(), img.getPoints()), (0, 0))
@@ -301,7 +301,7 @@ if __name__ == "__main__":
                     deltaRows = 0
 
                 img.setPoints((img.getPoints()[0] + deltaCols, img.getPoints()[1] + deltaRows))
-                if Distance(img.getPoints(), newPoints) < 5:
+                if Distance(img.getPoints(), newPoints) < forkDistance:
                     reachPoints = True
             cv2.imshow('window', Zoom(Translation(img.getCurrentFrame(), img.getPoints()), img.getZoom()))
         framesShown += 1  # used to calc the framerate
