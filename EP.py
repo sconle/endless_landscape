@@ -29,9 +29,11 @@ headlessMode = True # True pour le lancer dans la console (sans bureau) ou False
 screenSize = [600,600] # taille de l'écran d'affichage (colonne, ligne)
 videoSize = [1920,1080] # dimension de la vidéo (colonne, ligne)
 changePlayDirectionProbas = [0.02, 0.032, 0.1, 0.01] # liste de probabilités
+enterLoopProbas = 1/1200 # probabilités à chaque frame de rentrer dans une boucle
+loopRangeProbaTimer = [[2, 0.5, [3.0, 4.0]], [4,0.5,[3.0, 7.0]]] # différentes amplitudes (en frames) de boucle ainsi que les probabilités (la somme des probas doit faire 1) et d'une plage de durée (en s)
 fixedPlayDirectionChangeProba = .01 # probabilité de changement de direction supplémentaire
 changeProbasEvery = [4.0, 7.0] # temps en secondes (min et max, peu importe l'ordre) au bout duquel une nouvelle proba est tirée au sort
-changeConfigEvery = [3.0,3.1] # temps en seconde (min et max, peu importe l'ordre) au bout duquel une nouvelle config est choisie
+changeConfigEvery = [3.0,5.0] # temps en seconde (min et max, peu importe l'ordre) au bout duquel une nouvelle config est choisie
 maxFPS = 20 # nombre maximal d'images par secondes souhaitées
 
 listPointsZoom = [[[[960,540],None],[1.2,None]],
@@ -46,6 +48,12 @@ randZoomInter = [1.2, 1.7] # intervalle dans lequel on ppeut piocher un zoom al�
 forkZoom = 0.01 # fourchette à partir de laquelle le zom est considéré comme atteint, par exemple pour une fourchette de 0.1, si l'on souhaite atteindre un zoom de 1.3 alors on considerera comme acceptable un zoom de 1.2 ou 1.4
 portrait = False # portrait = False si on affiche en paysage, True si on affiche en portrait
 mirror = False # inverser la video
+
+sum = 0
+for rangeProbaTimer in loopRangeProbaTimer:
+    sum += rangeProbaTimer[1]
+if float(sum) != 1.0:
+    raise Exception(f"sum of probabilities in loopRangeProba is not equal to 1.0, equal to {sum} instead")
 
 angle = 0
 if portrait:
@@ -125,6 +133,14 @@ class ImageSequence():
 
         else : raise SystemError(f"file {videoPath} not found")
 
+    def getFrameCount(self):
+        return self.frameCount
+
+    def getPlayingForward(self):
+        return self.playingForward
+
+    def getCurrentFrameIndex(self):
+        return self.currentFrameIndex
 
     def getCurrentFrame(self):
         return self.frames[self.currentFrameIndex]
@@ -155,14 +171,22 @@ class ImageSequence():
     def step(self, loop=False):
         """ set the play head (self.currentFrameIndex) to it's new position depending of the change direction
         proba and the current position in the file (manages looping forward or backward) """
-        if random.random() < self.changePlayDirectionProba : self.playingForward = not self.playingForward # random direction change
-        if random.random() < fixedPlayDirectionChangeProba : self.playingForward = not self.playingForward
-        if loop : # loops back to the end and forth to the beginning
-            if self.playingForward :
-                self.currentFrameIndex = self.currentFrameIndex +1 if self.currentFrameIndex+1<self.frameCount-1 else 0
+        if loop : # enter the loop between two particular frames
+            if self.playingForward:
+                if self.currentFrameIndex+1<=lastLoopFrame:
+                    self.currentFrameIndex += 1
+                else:
+                    self.currentFrameIndex -= 1
+                    self.playingForward = False
             else :
-                self.currentFrameIndex = self.currentFrameIndex -1 if self.currentFrameIndex-1>0 else self.frameCount-1
+                if self.currentFrameIndex- 1 >= firstLoopFrame:
+                    self.currentFrameIndex -= 1
+                else:
+                    self.currentFrameIndex += 1
+                    self.playingForward = True
         else : # invert playing direction when an end is reached
+            if random.random() < self.changePlayDirectionProba : self.playingForward = not self.playingForward # random direction change
+            if random.random() < fixedPlayDirectionChangeProba : self.playingForward = not self.playingForward
             if self.playingForward :
                 if self.currentFrameIndex+1 < self.frameCount-1 : self.currentFrameIndex+=1
                 else :
@@ -200,10 +224,12 @@ if __name__ == "__main__":
     distance = 0
     timeTransiZoom = 0
     timeConfigStart = datetime.now()
+    loop = False
+    endLoop = datetime.now()
     reachZoom, reachPoints = False, False
     
     # window or surface creation
-    if headlessMode : surface = pygame.display.set_mode((screenSize[0], screenSize[1]))#,pygame.FULLSCREEN) # full screen
+    if headlessMode : surface = pygame.display.set_mode((screenSize[0], screenSize[1]),pygame.FULLSCREEN) # full screen
     else :
         cv2.namedWindow("window", cv2.WND_PROP_FULLSCREEN) # full screen, no titlebar
         cv2.setWindowProperty("window",cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
@@ -249,6 +275,32 @@ if __name__ == "__main__":
     # play loop
     while playing :
         loopTime = datetime.now()
+        
+        # looking if we enter a loop, and initializing it
+        if random.random() < enterLoopProbas and not loop:
+            print("loop")
+            loop = True
+            proba = 0
+            rangeTimer = None
+            drawnProba = random.random()
+            for rangeProbaTimer in loopRangeProbaTimer: # choix du couple (amplitude, durée)
+                proba += rangeProbaTimer[1]
+                if drawnProba <= proba and rangeTimer is None:
+                    rangeTimer = rangeProbaTimer
+            if rangeTimer is None: # sécurité dans le cas où rangeTimer n'est pas été tiré pour une raison inconnue, cela empêche que le programme crash
+                loop = False
+            if img.getPlayingForward():
+                firstLoopFrame = img.getCurrentFrameIndex()
+                lastLoopFrame = firstLoopFrame + rangeTimer[0]
+                if lastLoopFrame >= img.getFrameCount():
+                    loop = False
+            else:
+                lastLoopFrame = img.getCurrentFrameIndex()
+                firstLoopFrame = lastLoopFrame - rangeTimer[0]
+                if firstLoopFrame <= 0:
+                    loop = False
+            loopDuration = numpy.random.uniform(rangeTimer[2][0],rangeTimer[2][1])
+            endLoop = datetime.now() + timedelta(seconds=loopDuration)
 
         # changing configuration
         if loopTime > changeConfigTimer and reachZoom and reachPoints:
@@ -294,12 +346,11 @@ if __name__ == "__main__":
             changeConfigTimer = getConfigTimer()
         
         # seconds spent in this configuration
-        configDuration = (datetime.now() - timeConfigStart).total_seconds()
+        configDuration = (loopTime - timeConfigStart).total_seconds()
         
         # display current frame
         if headlessMode :
             if not reachZoom:
-    
                 # update of deltaZoom each frame
                 if timeTransiZoom > configDuration:
                     deltaZoom = (newZoom - img.getZoom())/(maxFPS*(timeTransiZoom - configDuration))
@@ -368,7 +419,10 @@ if __name__ == "__main__":
         if loopTime > changeProbaTimer :
             img.changePlayDirectionProba = random.choice(changePlayDirectionProbas)
             changeProbaTimer = getProbaTimer()
-        img.step()
+        if loop and loopTime > endLoop:
+            loop = False
+            print("hors loop")
+        img.step(loop)
 
     # calculate FPS and exit graciously
     timeElapsed = (datetime.now()-timeStarted).total_seconds()
