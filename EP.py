@@ -27,10 +27,13 @@ headlessMode = True # True pour le lancer dans la console (sans bureau) ou False
 # 1 proba fixe + 1 liste
 # temps min et temps max
 screenSize = [600,600] # taille de l'écran d'affichage (colonne, ligne)
-videoSize = [1920,1080] # dimension de la vidéo (colonne, ligne)
+displaySize = [600,600] # taille de la fenêtre d'affichage (colonne, ligne)
+videoSize = [1920,1080] # dimension de la vidéo de base (colonne, ligne)
 changePlayDirectionProbas = [0.02, 0.032, 0.1, 0.01] # liste de probabilités
 enterLoopProbas = 1/1200 # probabilités à chaque frame de rentrer dans une boucle
-loopRangeProbaTimer = [[2, 0.5, [3.0, 4.0]], [4,0.5,[3.0, 7.0]]] # différentes amplitudes (en frames) de boucle ainsi que les probabilités (la somme des probas doit faire 1) et d'une plage de durée (en s)
+loopRangeProbaTimer = [[[2, 4], 0.5, [3.0, 4.0], [10,20]],
+                       [[4, 6],0.5,[3.0, 7.0], [10,30]]] # différentes amplitudes (en frames) de boucle ainsi que les probabilités (la somme des probas doit faire 1),
+                                           # d'une plage de durée (en s) ainsi que d'un nombre de frames dont la boucle se décalera
 fixedPlayDirectionChangeProba = .01 # probabilité de changement de direction supplémentaire
 changeProbasEvery = [4.0, 7.0] # temps en secondes (min et max, peu importe l'ordre) au bout duquel une nouvelle proba est tirée au sort
 changeConfigEvery = [3.0,5.0] # temps en seconde (min et max, peu importe l'ordre) au bout duquel une nouvelle config est choisie
@@ -40,7 +43,10 @@ listPointsZoom = [[[[960,540],None],[1.2,None]],
                   [[[1670,250],None],[1.2,None]],
                   [[[1733,893],None],[1.6,None]],
                   [[[230,230],None],[1.3,None]],
-                  [[[1763,157],None],[1.9,None]]] # liste des coordonnées/zooms (colonne, ligne) des différents points d'interets. La liste se présente comme suit: [[[[X,Y],None],[Zoom,None]],...] None en 2eme position pour les coordonnées si le point atteint doit être fixe (sinon on tirera aléatoirement un point entre les deux coordonnées), de même pour le zoom.
+                  [[[1763,157],None],[1.9,None]]] # liste des coordonnées/zooms (colonne, ligne) des différents points d'interets. La liste se présente comme suit:
+                                                  # [[[[X,Y],None],[Zoom,None]],...] None en 2eme position pour les coordonnées si le point atteint doit être fixe
+                                                  # (sinon on tirera aléatoirement un point entre les deux coordonnées), de même pour le zoom.
+                                                  
                                                   # on utilise listPointsZoom dans le code comme suit: listPointsZoom[n°config][0:coordonnées 1:zoom][0:1ere valeur 1:soit None soit une valeur qui donne un intervalle]
 avgSpeed = 150 # vitesse moyenne de déplacement pendant les transitions en pixels par seconde
 probaRandConfig = 1 # 0 que des configs provenant de la liste / 1 que de l'alea
@@ -48,6 +54,9 @@ randZoomInter = [1.2, 1.7] # intervalle dans lequel on ppeut piocher un zoom al�
 forkZoom = 0.01 # fourchette à partir de laquelle le zom est considéré comme atteint, par exemple pour une fourchette de 0.1, si l'on souhaite atteindre un zoom de 1.3 alors on considerera comme acceptable un zoom de 1.2 ou 1.4
 portrait = False # portrait = False si on affiche en paysage, True si on affiche en portrait
 mirror = False # inverser la video
+
+
+
 
 sum = 0
 for rangeProbaTimer in loopRangeProbaTimer:
@@ -57,7 +66,7 @@ if float(sum) != 1.0:
 
 angle = 0
 if portrait:
-    screenSize[0], screenSize[1] = screenSize[1], screenSize[0]
+    displaySize[0], displaySize[1] = displaySize[1], displaySize[0]
     videoSize[0], videoSize[1] = videoSize[1], videoSize[0]
     angle = 90
 if mirror:
@@ -84,8 +93,11 @@ if headlessMode :
     os.putenv('SDL_VIDEODRIVER', 'fbcon')
     os.environ["SDL_FBDEV"] = "/dev/fb0"
     os.environ['SDL_NOMOUSE'] = '1'
+    os.environ['SDL_VIDEO_WINDOW_POS'] = "%i,%i" % (550,550) 
+    os.environ['SDL_VIDEO_CENTERDED'] = '1'
     print("running in headless mode using framebuffer",os.environ["SDL_FBDEV"])
     pygame.init()
+    pygame.mixer.init()
     pygame.mouse.set_visible(False)
 else : import time, imutils
 
@@ -229,7 +241,9 @@ if __name__ == "__main__":
     reachZoom, reachPoints = False, False
     
     # window or surface creation
-    if headlessMode : surface = pygame.display.set_mode((screenSize[0], screenSize[1]),pygame.FULLSCREEN) # full screen
+    if headlessMode:
+        surface = pygame.display.set_mode((screenSize[0],screenSize[1]) ,pygame.FULLSCREEN) # full screen
+        display = pygame.Surface((displaySize[0],displaySize[1]))
     else :
         cv2.namedWindow("window", cv2.WND_PROP_FULLSCREEN) # full screen, no titlebar
         cv2.setWindowProperty("window",cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
@@ -242,10 +256,10 @@ if __name__ == "__main__":
         
         def ZoomTranslatHeadlessMode(image, zoomSize, point):
             # Méthode Zoom et translation dans Pygame pour la Raspberry
-            wnd_w, wnd_h = screenSize[0], screenSize[1]
-            image_surface = pygame.Surface((image.get_width() / zoomSize, image.get_height() / zoomSize))
+            wnd_w, wnd_h = displaySize[0], displaySize[1]
+            image_surface = pygame.Surface((videoSize[0] / zoomSize, videoSize[1] / zoomSize))
             image_surface.blit(image, (wnd_w/(2*zoomSize) - point[0],wnd_h/(2*zoomSize) - point[1]))
-            image_surface = pygame.transform.scale(image_surface, (image.get_width(), image.get_height()))
+            image_surface = pygame.transform.scale(image_surface, (videoSize[0], videoSize[1]))
             return image_surface
 
 
@@ -274,11 +288,10 @@ if __name__ == "__main__":
 
     # play loop
     while playing :
-        loopTime = datetime.now()
+        currentTime = datetime.now()
         
         # looking if we enter a loop, and initializing it
         if random.random() < enterLoopProbas and not loop:
-            print("loop")
             loop = True
             proba = 0
             rangeTimer = None
@@ -289,32 +302,42 @@ if __name__ == "__main__":
                     rangeTimer = rangeProbaTimer
             if rangeTimer is None: # sécurité dans le cas où rangeTimer n'est pas été tiré pour une raison inconnue, cela empêche que le programme crash
                 loop = False
-            if img.getPlayingForward():
+            amplitude = numpy.random.randint(rangeTimer[0][0],rangeTimer[0][1] + 1) #on tire l'amplitude de la boucle
+            loopDuration = numpy.random.uniform(rangeTimer[2][0],rangeTimer[2][1]) # on tire le temps que la bouucle va durer
+            shift = numpy.random.randint(rangeTimer[3][0],rangeTimer[3][1] + 1) # on tire le nb de frames dont la boucle va se déplacer
+            shiftPerFrame = shift/(loopDuration*maxFPS)
+            if img.getPlayingForward(): # établissement des deux bornes de la loop
                 firstLoopFrame = img.getCurrentFrameIndex()
-                lastLoopFrame = firstLoopFrame + rangeTimer[0]
+                lastLoopFrame = firstLoopFrame + amplitude
+                shiftDirectionForward = True
                 if lastLoopFrame >= img.getFrameCount():
-                    loop = False
+                    lastLoopFrame = img.getFrameCount() - 1
+                    firstLoopFrame = lastLoopFrame - amplitude
+                    shiftDirectionForward = False
             else:
                 lastLoopFrame = img.getCurrentFrameIndex()
-                firstLoopFrame = lastLoopFrame - rangeTimer[0]
+                firstLoopFrame = lastLoopFrame - amplitude
+                shiftDirectionForward = False
                 if firstLoopFrame <= 0:
-                    loop = False
-            loopDuration = numpy.random.uniform(rangeTimer[2][0],rangeTimer[2][1])
+                    firstLoopFrame = 1
+                    lastLoopFrame = 1 + amplitude
+                    shiftDirectionForward = True
+                
             endLoop = datetime.now() + timedelta(seconds=loopDuration)
 
         # changing configuration
-        if loopTime > changeConfigTimer and reachZoom and reachPoints:
+        if currentTime > changeConfigTimer and reachZoom and reachPoints:
             reachZoom = False
             reachPoints = False
             oldPoints = img.getPoints()
             oldZoom = img.getZoom()
             timeConfigStart = datetime.now()
-            if random.random() < probaRandConfig:
+            if random.random() < probaRandConfig: # test pour voir si l'on rentre dans une configuration tirée aléatoirement
                 newZoom = numpy.random.uniform(randZoomInter[0],randZoomInter[1])
                 if headlessMode:
-                    newPoints = [numpy.random.randint(screenSize[0] / (2 * (newZoom + forkZoom)) - 1,img.getCurrentFrame().get_width() - screenSize[0] / (2 * (newZoom + forkZoom)) + 1), numpy.random.randint(screenSize[1] / (2 * (newZoom + forkZoom)) - 1,img.getCurrentFrame().get_height() - screenSize[1] / (2 * (newZoom + forkZoom)) + 1)]
+                    newPoints = [numpy.random.randint(displaySize[0] / (2 * (newZoom + forkZoom)) - 1,videoSize[0] - displaySize[0] / (2 * (newZoom + forkZoom)) + 1), numpy.random.randint(displaySize[1] / (2 * (newZoom + forkZoom)) - 1, videoSize[1] - displaySize[1] / (2 * (newZoom + forkZoom)) + 1)]
                 else:
-                    newPoints = [numpy.random.randint(screenSize[0]/(2 * (newZoom + forkZoom)) - 1,img.getCurrentFrame().shape[1] - screenSize[0]/(2 * (newZoom + forkZoom)) + 1),numpy.random.randint(screenSize[1]/(2 * (newZoom + forkZoom)) - 1,img.getCurrentFrame().shape[0] - screenSize[1]/(2 * (newZoom + forkZoom)) + 1)]
+                    newPoints = [numpy.random.randint(displaySize[0]/(2 * (newZoom + forkZoom)) - 1,img.getCurrentFrame().shape[1] - displaySize[0]/(2 * (newZoom + forkZoom)) + 1),numpy.random.randint(displaySize[1]/(2 * (newZoom + forkZoom)) - 1,img.getCurrentFrame().shape[0] - displaySize[1]/(2 * (newZoom + forkZoom)) + 1)]
                 if angle == 90:
                    newPoints = [newPoints[1],videoSize[1]-newPoints[0]]
                 elif angle == 180:
@@ -346,7 +369,7 @@ if __name__ == "__main__":
             changeConfigTimer = getConfigTimer()
         
         # seconds spent in this configuration
-        configDuration = (loopTime - timeConfigStart).total_seconds()
+        configDuration = (currentTime - timeConfigStart).total_seconds()
         
         # display current frame
         if headlessMode :
@@ -356,6 +379,7 @@ if __name__ == "__main__":
                     deltaZoom = (newZoom - img.getZoom())/(maxFPS*(timeTransiZoom - configDuration))
                 else:
                     deltaZoom = 0
+                    reachZoom = True
                 
                 img.setZoom(img.getZoom() + deltaZoom)
                 if (img.getZoom() < newZoom + forkZoom) and (img.getZoom() >= newZoom - forkZoom):
@@ -371,6 +395,7 @@ if __name__ == "__main__":
                 else:
                     deltaCols = 0
                     deltaRows = 0
+                    reachPoints = True
 
                 img.setPoints([img.getPoints()[0] + deltaCols, img.getPoints()[1] + deltaRows])
 
@@ -379,7 +404,8 @@ if __name__ == "__main__":
                     changeConfigTimer = getConfigTimer()
 
 
-            surface.blit(ZoomTranslatHeadlessMode(img.getCurrentFrame(),img.getZoom(),img.getPoints()), (0,0))
+            display.blit(ZoomTranslatHeadlessMode(img.getCurrentFrame(),img.getZoom(),img.getPoints()), (0,0))
+            surface.blit(display,(screenSize[0]/2 - displaySize[0]/2,screenSize[1]/2 - displaySize[1]/2))
             pygame.display.update()
             for event in pygame.event.get(): # exit on esc
                 if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
@@ -409,20 +435,37 @@ if __name__ == "__main__":
         framesShown += 1 # used to calc the framerate
 
         # wait
-        timeElapsed = (datetime.now() - loopTime).total_seconds()*1000 # in millis, used to calc the sleep delay between two frames
+        timeElapsed = (datetime.now() - currentTime).total_seconds()*1000 # in millis, used to calc the sleep delay between two frames
         if headlessMode :
             if timeElapsed < periodMillis : pygame.time.wait(int(periodMillis - timeElapsed))
         else :
             if cv2.waitKey(int(1000/maxFPS)) == 27: playing = False # exit on esc
 
         # set the playhead for the next frame
-        if loopTime > changeProbaTimer :
+        if currentTime > changeProbaTimer :
             img.changePlayDirectionProba = random.choice(changePlayDirectionProbas)
             changeProbaTimer = getProbaTimer()
-        if loop and loopTime > endLoop:
-            loop = False
-            print("hors loop")
+        if loop:
+            if shiftDirectionForward:
+                if lastLoopFrame + 1 < img.getFrameCount():
+                    firstLoopFrame += shiftPerFrame
+                    lastLoopFrame += shiftPerFrame
+                else:
+                    firstLoopFrame -= shiftPerFrame
+                    lastLoopFrame -= shiftPerFrame
+                    shiftDirectionForward = False
+            else:
+                if firstLoopFrame - 1 > 0:
+                    firstLoopFrame -= shiftPerFrame
+                    lastLoopFrame -= shiftPerFrame
+                else:
+                    firstLoopFrame += shiftPerFrame
+                    lastLoopFrame += shiftPerFrame
+                    shiftDirectionForward = True
+            if currentTime > endLoop:
+                loop = False
         img.step(loop)
+        
 
     # calculate FPS and exit graciously
     timeElapsed = (datetime.now()-timeStarted).total_seconds()
