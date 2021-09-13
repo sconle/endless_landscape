@@ -100,6 +100,7 @@ pygame.init()
 pygame.mixer.init()
 pygame.mouse.set_visible(False)
 
+
 class ImageSequence():
 
     def __init__(self, videoFilename):
@@ -112,6 +113,7 @@ class ImageSequence():
         self.zoom = listPointsZoom[0][1][0]
         self.points = listPointsZoom[0][0][0]
         self.config = 0
+
 
     def extractFrames(self, videoPath):
         """ extracts frames from the video file to RAM, including cv2 -> pygame conversion in headless mode"""
@@ -172,6 +174,7 @@ class ImageSequence():
         else:
             while old == self.getConfig():
                 self.config = random.choice([i for i in range(len(listPointsZoom))])
+
 
     def step(self, loop=False):
         """ set the play head (self.currentFrameIndex) to it's new position depending of the change direction
@@ -379,6 +382,7 @@ if __name__ == "__main__":
 
         # configuration de la tête de lecture pour la prochaine image
         if currentTime > changeProbaTimer :
+
             img.changePlayDirectionProba = random.choice(changePlayDirectionProbas)
             changeProbaTimer = getProbaTimer()
         if loop:
