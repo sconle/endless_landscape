@@ -20,8 +20,11 @@
 #
 # usage: python3 playRandom_RAM.py monfichier.mp4
 
-import os, sys, cv2, random, numpy
+import os, sys, cv2, random, numpy, pygame
 from datetime import datetime, timedelta
+
+# !! Ce programme est optimisé pour fonctionner sous un environnement Linux (et raspberry pi), l'utilisation sous windows
+#(qui plus est sur un ordinateur "classique") n'est pas (encore) garantit sans mauvaises surprises !!
 
 # 1 proba fixe + 1 liste
 # temps min et temps max
@@ -89,17 +92,15 @@ for config in listPointsZoom:
         elif angle == 270:
             config[0][1] = [videoSize[0] - config[0][1][1],config[0][1][0]]
 
-import pygame
+pygame.init()
 os.putenv('SDL_VIDEODRIVER', 'fbcon')
 os.environ["SDL_FBDEV"] = "/dev/fb0"
 os.environ['SDL_NOMOUSE'] = '1'
 os.environ['SDL_VIDEO_WINDOW_POS'] = "%i,%i" % (550,550) 
 os.environ['SDL_VIDEO_CENTERDED'] = '1'
 print("running in headless mode using framebuffer",os.environ["SDL_FBDEV"])
-pygame.init()
 pygame.mixer.init()
 pygame.mouse.set_visible(False)
-
 
 class ImageSequence():
 
@@ -113,7 +114,6 @@ class ImageSequence():
         self.zoom = listPointsZoom[0][1][0]
         self.points = listPointsZoom[0][0][0]
         self.config = 0
-
 
     def extractFrames(self, videoPath):
         """ extracts frames from the video file to RAM, including cv2 -> pygame conversion in headless mode"""
@@ -174,7 +174,6 @@ class ImageSequence():
         else:
             while old == self.getConfig():
                 self.config = random.choice([i for i in range(len(listPointsZoom))])
-
 
     def step(self, loop=False):
         """ set the play head (self.currentFrameIndex) to it's new position depending of the change direction
@@ -382,7 +381,6 @@ if __name__ == "__main__":
 
         # configuration de la tête de lecture pour la prochaine image
         if currentTime > changeProbaTimer :
-
             img.changePlayDirectionProba = random.choice(changePlayDirectionProbas)
             changeProbaTimer = getProbaTimer()
         if loop:
