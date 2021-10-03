@@ -20,8 +20,11 @@
 #
 # usage: python3 playRandom_RAM.py monfichier.mp4
 
-import os, sys, cv2, random, numpy
+import os, sys, cv2, random, numpy, pygame
 from datetime import datetime, timedelta
+
+# !! Ce programme est optimisé pour fonctionner sous un environnement Linux (et raspberry pi), l'utilisation sous windows
+#(qui plus est sur un ordinateur "classique") n'est pas (encore) garantit sans mauvaises surprises !!
 
 # 1 proba fixe + 1 liste
 # temps min et temps max
@@ -89,14 +92,13 @@ for config in listPointsZoom:
         elif angle == 270:
             config[0][1] = [videoSize[0] - config[0][1][1],config[0][1][0]]
 
-import pygame
+pygame.init()
 os.putenv('SDL_VIDEODRIVER', 'fbcon')
 os.environ["SDL_FBDEV"] = "/dev/fb0"
 os.environ['SDL_NOMOUSE'] = '1'
 os.environ['SDL_VIDEO_WINDOW_POS'] = "%i,%i" % (550,550) 
 os.environ['SDL_VIDEO_CENTERDED'] = '1'
 print("running in headless mode using framebuffer",os.environ["SDL_FBDEV"])
-pygame.init()
 pygame.mixer.init()
 pygame.mouse.set_visible(False)
 
