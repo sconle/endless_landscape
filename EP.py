@@ -221,7 +221,7 @@ if __name__ == "__main__":
     if len(sys.argv) < 2 : raise SystemExit(f"usage : python3 {sys.argv[0]} monFichier.mp4")
     img = ImageSequence(sys.argv[1])
 
-    timeStarted, framesShown, = datetime.now(), 0
+    timeStarted, framesShown = datetime.now(), 0
     changeProbaTimer = getProbaTimer()
     changeConfigTimer = getConfigTimer()
     periodMillis = int(1000/maxFPS)
